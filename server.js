@@ -1,5 +1,22 @@
+const express = require("express");
 const { Client, GatewayIntentBits } = require("discord.js");
 
+const app = express();
+
+// ======================
+// 🌐 SERVIDOR (RENDER)
+// ======================
+app.get("/", (req, res) => {
+  res.send("Servidor OK - Key System Online");
+});
+
+app.listen(process.env.PORT || 3000, () => {
+  console.log("🌐 Servidor rodando");
+});
+
+// ======================
+// 🤖 DISCORD BOT
+// ======================
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -8,10 +25,16 @@ const client = new Client({
   ]
 });
 
-// tickets já usados (anti-fraude simples)
+// anti-crash login
+client.login("SEU_TOKEN_AQUI").catch(err => {
+  console.log("❌ ERRO NO TOKEN:", err);
+});
+
+// ======================
+// 🔑 KEY SYSTEM SIMPLES
+// ======================
 const usedTickets = new Set();
 
-// gera KEY
 function generateKey() {
   return "STORE-" + Math.random().toString(36).substring(2, 8).toUpperCase();
 }
@@ -21,25 +44,21 @@ client.on("messageCreate", (msg) => {
 
   const ticketId = msg.channel.id;
 
-  // bloqueia ticket reutilizado
   if (usedTickets.has(ticketId)) {
-    msg.channel.send("❌ Esse ticket já foi processado.");
+    msg.channel.send("❌ Ticket já processado.");
     return;
   }
 
-  const content = msg.content.toLowerCase();
+  const text = msg.content.toLowerCase();
 
-  // detecta comprovante (texto ou imagem)
-  if (content.includes("pago") || msg.attachments.size > 0) {
+  if (text.includes("pago") || msg.attachments.size > 0) {
 
     const key = generateKey();
 
     usedTickets.add(ticketId);
 
     msg.channel.send(
-      "✔ Comprovante recebido\n🔑 SUA KEY: " + key + "\n⏳ Expira em 24h"
+      "✔ Pagamento recebido\n🔑 KEY: " + key + "\n⏳ Expira em 24h"
     );
   }
 });
-
-client.login("SEU_BOT_TOKEN_AQUI");
