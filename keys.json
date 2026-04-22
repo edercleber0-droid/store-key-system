@@ -1,1 +1,26 @@
-[]
+[
+  {
+    "key": "DEMO-1D",
+    "tipo": "1d",
+    "expires": null,
+    "owner": null,
+    "createdAt": 1745424000000,
+    "activatedAt": null
+  },
+  {
+    "key": "DEMO-3D",
+    "tipo": "3d",
+    "expires": null,
+    "owner": null,
+    "createdAt": 1745424000000,
+    "activatedAt": null
+  },
+  {
+    "key": "DEMO-PERM",
+    "tipo": "perm",
+    "expires": null,
+    "owner": null,
+    "createdAt": 1745424000000,
+    "activatedAt": null
+  }
+]
