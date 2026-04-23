@@ -1,36 +1,67 @@
 const express = require("express");
-const fs = require("fs");
-const path = require("path");
-
 const app = express();
 
-// Arquivo para salvar as keys (persistente no Render com disco)
-const KEYS_FILE = path.join(__dirname, "keys.json");
+// =====================
+// CONFIGURAÇÃO DO GITHUB (TOKEN VEM DO AMBIENTE)
+// =====================
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;  // ← Pega do ambiente
+const REPO_OWNER = "edercleber0-droid";
+const REPO_NAME = "keys-database";
+const FILE_PATH = "keys.json";
 
-// Carregar keys do arquivo
-function carregarKeys() {
-    if (fs.existsSync(KEYS_FILE)) {
-        return JSON.parse(fs.readFileSync(KEYS_FILE));
-    }
-    return [];
+// =====================
+// FUNÇÕES DO GITHUB
+// =====================
+async function buscarKeys() {
+    const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`;
+    const response = await fetch(url, {
+        headers: {
+            "Authorization": `token ${GITHUB_TOKEN}`,
+            "User-Agent": "Render-App"
+        }
+    });
+    const data = await response.json();
+    const conteudo = Buffer.from(data.content, 'base64').toString('utf-8');
+    return JSON.parse(conteudo);
 }
 
-// Salvar keys no arquivo
-function salvarKeys(keys) {
-    fs.writeFileSync(KEYS_FILE, JSON.stringify(keys, null, 2));
+async function salvarKeys(keys) {
+    const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`;
+    
+    const getResponse = await fetch(url, {
+        headers: {
+            "Authorization": `token ${GITHUB_TOKEN}`,
+            "User-Agent": "Render-App"
+        }
+    });
+    const data = await getResponse.json();
+    const sha = data.sha;
+    
+    const conteudo = Buffer.from(JSON.stringify(keys, null, 2)).toString('base64');
+    await fetch(url, {
+        method: "PUT",
+        headers: {
+            "Authorization": `token ${GITHUB_TOKEN}`,
+            "Content-Type": "application/json",
+            "User-Agent": "Render-App"
+        },
+        body: JSON.stringify({
+            message: "Update keys",
+            content: conteudo,
+            sha: sha
+        })
+    });
 }
 
 // =====================
 // ENDPOINTS
 // =====================
-
 app.get("/", (req, res) => {
-    res.send("KEY SYSTEM ONLINE ✔ | 1d | 3d | PERM");
+    res.send("KEY SYSTEM ONLINE ✔ | GITHUB");
 });
 
-app.get("/generate", (req, res) => {
+app.get("/generate", async (req, res) => {
     const tipo = req.query.type || "perm";
-    
     const codigo = Math.random().toString(36).substring(2, 10).toUpperCase();
     const keyString = `STORE-${codigo}-${tipo.toUpperCase()}`;
     
@@ -38,7 +69,7 @@ app.get("/generate", (req, res) => {
     if (tipo === "1d") expires = Date.now() + (24 * 60 * 60 * 1000);
     if (tipo === "3d") expires = Date.now() + (72 * 60 * 60 * 1000);
     
-    const keys = carregarKeys();
+    const keys = await buscarKeys();
     keys.push({
         key: keyString,
         tipo: tipo,
@@ -46,16 +77,16 @@ app.get("/generate", (req, res) => {
         owner: null,
         created_at: Date.now()
     });
-    salvarKeys(keys);
+    await salvarKeys(keys);
     
-    res.json({ key: keyString, tipo: tipo, expires: expires });
+    res.json({ key: keyString, tipo: tipo });
 });
 
-app.get("/check", (req, res) => {
+app.get("/check", async (req, res) => {
     const key = req.query.key;
     const userId = req.query.userId;
     
-    const keys = carregarKeys();
+    const keys = await buscarKeys();
     const found = keys.find(k => k.key === key);
     
     if (!found) return res.json({ valid: false });
@@ -67,8 +98,7 @@ app.get("/check", (req, res) => {
     
     if (!found.owner) {
         found.owner = userId;
-        found.activated_at = Date.now();
-        salvarKeys(keys);
+        await salvarKeys(keys);
         return res.json({ valid: true, firstUse: true });
     }
     
@@ -79,8 +109,8 @@ app.get("/check", (req, res) => {
     res.json({ valid: true });
 });
 
-app.get("/list", (req, res) => {
-    const keys = carregarKeys();
+app.get("/list", async (req, res) => {
+    const keys = await buscarKeys();
     const agora = Date.now();
     
     const keysInfo = keys.map(k => ({
@@ -94,7 +124,4 @@ app.get("/list", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log("SERVER RODANDO NA PORTA:", PORT);
-    console.log("KEYS SALVAS EM:", KEYS_FILE);
-});
+app.listen(PORT, () => console.log("SERVER RODANDO NA PORTA:", PORT));
