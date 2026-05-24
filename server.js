@@ -9,12 +9,7 @@ const FILE_PATH = "keys.json";
 async function buscarKeys() {
     try {
         const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`;
-        const response = await fetch(url, {
-            headers: {
-                "Authorization": `token ${GITHUB_TOKEN}`,
-                "User-Agent": "Render-App"
-            }
-        });
+        const response = await fetch(url, { headers: { "Authorization": `token ${GITHUB_TOKEN}`, "User-Agent": "Render-App" } });
         if (!response.ok) return [];
         const data = await response.json();
         const conteudo = Buffer.from(data.content, 'base64').toString('utf-8');
@@ -25,171 +20,65 @@ async function buscarKeys() {
 async function salvarKeys(keys) {
     try {
         const url = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`;
-        const getResponse = await fetch(url, {
-            headers: { "Authorization": `token ${GITHUB_TOKEN}`, "User-Agent": "Render-App" }
-        });
+        const getResponse = await fetch(url, { headers: { "Authorization": `token ${GITHUB_TOKEN}`, "User-Agent": "Render-App" } });
         let sha = null;
-        if (getResponse.ok) {
-            const data = await getResponse.json();
-            sha = data.sha;
-        }
+        if (getResponse.ok) { const data = await getResponse.json(); sha = data.sha; }
         const conteudo = Buffer.from(JSON.stringify(keys, null, 2)).toString('base64');
         const body = { message: "Update keys", content: conteudo };
         if (sha) body.sha = sha;
-        await fetch(url, {
-            method: "PUT",
-            headers: { "Authorization": `token ${GITHUB_TOKEN}`, "Content-Type": "application/json", "User-Agent": "Render-App" },
-            body: JSON.stringify(body)
-        });
+        await fetch(url, { method: "PUT", headers: { "Authorization": `token ${GITHUB_TOKEN}`, "Content-Type": "application/json", "User-Agent": "Render-App" }, body: JSON.stringify(body) });
     } catch { }
 }
 
-app.get("/", (req, res) => {
-    res.send("KEY SYSTEM ONLINE ✔ | 1d | 3d | perm");
-});
+app.get("/", (req, res) => { res.send("KEY SYSTEM ONLINE ✔ | 1d | 3d | perm"); });
 
 app.get("/generate", async (req, res) => {
     const tipo = req.query.type || "perm";
-    let keyType = tipo;
-    
     const codigo = Math.random().toString(36).substring(2, 10).toUpperCase();
-    const keyString = `${codigo}`;
-    
     let expires = null;
-    if (tipo === "1d") {
-        expires = Date.now() + (24 * 60 * 60 * 1000);
-        keyType = "1d";
-    } else if (tipo === "3d") {
-        expires = Date.now() + (72 * 60 * 60 * 1000);
-        keyType = "3d";
-    } else {
-        keyType = "perm";
-    }
-    
+    if (tipo === "1d") expires = Date.now() + (24 * 60 * 60 * 1000);
+    else if (tipo === "3d") expires = Date.now() + (72 * 60 * 60 * 1000);
     const keys = await buscarKeys();
-    
-    const existe = keys.find(k => k.key === keyString);
-    if (existe) {
-        return res.json({ error: "Key duplicada, tente novamente" });
-    }
-    
-    keys.push({
-        key: keyString,
-        tipo: keyType,
-        expires: expires,
-        created_at: Date.now(),
-        owner: "Nenhum"
-    });
+    keys.push({ key: codigo, tipo: tipo === "1d" ? "1d" : tipo === "3d" ? "3d" : "perm", expires: expires, created_at: Date.now(), owner: "Nenhum" });
     await salvarKeys(keys);
-    
-    console.log(`[GERADO] Key: ${keyString}, Tipo: ${keyType}`);
-    res.json({ key: keyString, tipo: keyType, expires: expires });
+    res.json({ key: codigo, tipo: tipo, expires: expires });
 });
 
 app.get("/check", async (req, res) => {
     const key = req.query.key;
-    
     if (key === "list") {
         const keys = await buscarKeys();
-        const agora = Date.now();
-        const keysInfo = keys.map(k => ({
-            key: k.key,
-            tipo: k.tipo,
-            expires: k.expires,
-            expires_formatado: k.expires ? new Date(k.expires).toLocaleString() : "Nunca",
-            status: k.expires && agora > k.expires ? "EXPIRADA" : "ATIVA",
-            created_at: new Date(k.created_at).toLocaleString(),
-            owner: k.owner || "Nenhum"
-        }));
-        return res.json({ total: keysInfo.length, keys: keysInfo });
+        return res.json({ keys: keys.map(k => ({ key: k.key, tipo: k.tipo, status: k.expires && Date.now() > k.expires ? "EXPIRADA" : "ATIVA", owner: k.owner })) });
     }
-    
     const keys = await buscarKeys();
     const found = keys.find(k => k.key === key);
-    
-    if (!found) {
-        console.log(`[CHECK] Key inválida: ${key}`);
-        return res.json({ valid: false });
-    }
-    
-    const agora = Date.now();
-    const expirada = found.expires !== null && agora > found.expires;
-    
-    if (expirada) {
-        console.log(`[CHECK] Key expirada: ${key}`);
-        return res.json({ valid: false, expired: true });
-    }
-    
-    console.log(`[CHECK] Key válida: ${key}, Tipo: ${found.tipo}`);
-    res.json({ valid: true, tipo: found.tipo, expires: found.expires });
+    if (!found) return res.json({ valid: false });
+    if (found.expires && Date.now() > found.expires) return res.json({ valid: false, expired: true });
+    res.json({ valid: true, tipo: found.tipo });
 });
 
-// ========== ROTA /use ADICIONADA ==========
 app.get("/use", async (req, res) => {
     const key = req.query.key;
-    
     const keys = await buscarKeys();
     const found = keys.find(k => k.key === key);
-    
-    if (!found) {
-        return res.json({ success: false, error: "Key inválida" });
-    }
-    
-    const agora = Date.now();
-    const expirada = found.expires !== null && agora > found.expires;
-    
-    if (expirada) {
-        return res.json({ success: false, error: "Key expirada" });
-    }
-    
-    // Marca como EM USO (apenas na primeira vez)
-    if (!found.owner || found.owner === "Nenhum") {
-        found.owner = "EM USO";
-        await salvarKeys(keys);
-        console.log(`[USE] Key ativada: ${key}`);
-    } else {
-        console.log(`[USE] Key já estava ativa: ${key}`);
-    }
-    
-    res.json({ success: true, message: "Key ativada com sucesso" });
+    if (!found) return res.json({ success: false, error: "Key inválida" });
+    if (found.expires && Date.now() > found.expires) return res.json({ success: false, error: "Key expirada" });
+    if (found.owner === "Nenhum") { found.owner = "EM USO"; await salvarKeys(keys); }
+    res.json({ success: true });
 });
-// ========== FIM DA ROTA /use ==========
 
 app.get("/list", async (req, res) => {
     const keys = await buscarKeys();
-    const agora = Date.now();
-    
-    const keysInfo = keys.map(k => ({
-        key: k.key,
-        tipo: k.tipo,
-        expires: k.expires,
-        expires_formatado: k.expires ? new Date(k.expires).toLocaleString() : "Nunca",
-        status: k.expires && agora > k.expires ? "EXPIRADA" : "ATIVA",
-        owner: k.owner || "Nenhum"
-    }));
-    
-    console.log(`[LIST] Total: ${keysInfo.length} keys`);
-    res.json({ total: keysInfo.length, keys: keysInfo });
+    res.json({ total: keys.length, keys: keys.map(k => ({ key: k.key, tipo: k.tipo, owner: k.owner })) });
 });
 
 app.get("/delete", async (req, res) => {
-    const keyToDelete = req.query.key;
-    if (!keyToDelete) return res.json({ error: "Informe a key" });
-    
+    const key = req.query.key;
     let keys = await buscarKeys();
-    const index = keys.findIndex(k => k.key === keyToDelete);
-    if (index === -1) return res.json({ error: "Key nao encontrada" });
-    
-    keys.splice(index, 1);
+    keys = keys.filter(k => k.key !== key);
     await salvarKeys(keys);
-    
-    console.log(`[DELETE] Key deletada: ${keyToDelete}`);
-    res.json({ success: true, deleted: keyToDelete });
+    res.json({ success: true });
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log("========================================");
-    console.log("SERVER RODANDO NA PORTA:", PORT);
-    console.log("========================================");
-});
+app.listen(PORT, () => console.log("Servidor rodando na porta", PORT));
