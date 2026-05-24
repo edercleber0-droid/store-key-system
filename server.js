@@ -124,6 +124,7 @@ app.get("/check", async (req, res) => {
     res.json({ valid: true, tipo: found.tipo, expires: found.expires });
 });
 
+// ========== ROTA /use ADICIONADA ==========
 app.get("/use", async (req, res) => {
     const key = req.query.key;
     
@@ -150,9 +151,9 @@ app.get("/use", async (req, res) => {
         console.log(`[USE] Key já estava ativa: ${key}`);
     }
     
-    // SEMPRE retorna sucesso, mesmo se já foi usada antes
     res.json({ success: true, message: "Key ativada com sucesso" });
 });
+// ========== FIM DA ROTA /use ==========
 
 app.get("/list", async (req, res) => {
     const keys = await buscarKeys();
