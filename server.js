@@ -50,40 +50,21 @@ app.get("/", (req, res) => {
 
 app.get("/generate", async (req, res) => {
     const tipo = req.query.type || "perm";
-    let keyType = tipo;
-    
     const codigo = Math.random().toString(36).substring(2, 10).toUpperCase();
-    const keyString = `${codigo}`;
-    
     let expires = null;
-    if (tipo === "1d") {
-        expires = Date.now() + (24 * 60 * 60 * 1000);
-        keyType = "1d";
-    } else if (tipo === "3d") {
-        expires = Date.now() + (72 * 60 * 60 * 1000);
-        keyType = "3d";
-    } else {
-        keyType = "perm";
-    }
+    if (tipo === "1d") expires = Date.now() + (24 * 60 * 60 * 1000);
+    else if (tipo === "3d") expires = Date.now() + (72 * 60 * 60 * 1000);
     
     const keys = await buscarKeys();
-    
-    const existe = keys.find(k => k.key === keyString);
-    if (existe) {
-        return res.json({ error: "Key duplicada, tente novamente" });
-    }
-    
     keys.push({
-        key: keyString,
-        tipo: keyType,
+        key: codigo,
+        tipo: tipo === "1d" ? "1d" : tipo === "3d" ? "3d" : "perm",
         expires: expires,
         created_at: Date.now(),
         owner: "Nenhum"
     });
     await salvarKeys(keys);
-    
-    console.log(`[GERADO] Key: ${keyString}, Tipo: ${keyType}`);
-    res.json({ key: keyString, tipo: keyType, expires: expires });
+    res.json({ key: codigo, tipo: tipo, expires: expires });
 });
 
 app.get("/check", async (req, res) => {
@@ -98,7 +79,6 @@ app.get("/check", async (req, res) => {
             expires: k.expires,
             expires_formatado: k.expires ? new Date(k.expires).toLocaleString() : "Nunca",
             status: k.expires && agora > k.expires ? "EXPIRADA" : "ATIVA",
-            created_at: new Date(k.created_at).toLocaleString(),
             owner: k.owner || "Nenhum"
         }));
         return res.json({ total: keysInfo.length, keys: keysInfo });
@@ -107,55 +87,31 @@ app.get("/check", async (req, res) => {
     const keys = await buscarKeys();
     const found = keys.find(k => k.key === key);
     
-    if (!found) {
-        console.log(`[CHECK] Key inválida: ${key}`);
-        return res.json({ valid: false });
-    }
+    if (!found) return res.json({ valid: false });
+    if (found.expires && Date.now() > found.expires) return res.json({ valid: false, expired: true });
     
-    const agora = Date.now();
-    const expirada = found.expires !== null && agora > found.expires;
-    
-    if (expirada) {
-        console.log(`[CHECK] Key expirada: ${key}`);
-        return res.json({ valid: false, expired: true });
-    }
-    
-    console.log(`[CHECK] Key válida: ${key}, Tipo: ${found.tipo}`);
-    res.json({ valid: true, tipo: found.tipo, expires: found.expires });
+    res.json({ valid: true, tipo: found.tipo });
 });
 
 app.get("/use", async (req, res) => {
     const key = req.query.key;
-    
     const keys = await buscarKeys();
     const found = keys.find(k => k.key === key);
     
-    if (!found) {
-        return res.json({ success: false, error: "Key inválida" });
-    }
+    if (!found) return res.json({ success: false, error: "Key inválida" });
+    if (found.expires && Date.now() > found.expires) return res.json({ success: false, error: "Key expirada" });
     
-    const agora = Date.now();
-    const expirada = found.expires !== null && agora > found.expires;
-    
-    if (expirada) {
-        return res.json({ success: false, error: "Key expirada" });
-    }
-    
-    if (!found.owner || found.owner === "Nenhum") {
+    if (found.owner === "Nenhum") {
         found.owner = "EM USO";
         await salvarKeys(keys);
-        console.log(`[USE] Key ativada: ${key}`);
-    } else {
-        console.log(`[USE] Key já estava ativa: ${key}`);
     }
     
-    res.json({ success: true, message: "Key ativada com sucesso" });
+    res.json({ success: true });
 });
 
 app.get("/list", async (req, res) => {
     const keys = await buscarKeys();
     const agora = Date.now();
-    
     const keysInfo = keys.map(k => ({
         key: k.key,
         tipo: k.tipo,
@@ -164,29 +120,16 @@ app.get("/list", async (req, res) => {
         status: k.expires && agora > k.expires ? "EXPIRADA" : "ATIVA",
         owner: k.owner || "Nenhum"
     }));
-    
-    console.log(`[LIST] Total: ${keysInfo.length} keys`);
     res.json({ total: keysInfo.length, keys: keysInfo });
 });
 
 app.get("/delete", async (req, res) => {
-    const keyToDelete = req.query.key;
-    if (!keyToDelete) return res.json({ error: "Informe a key" });
-    
+    const key = req.query.key;
     let keys = await buscarKeys();
-    const index = keys.findIndex(k => k.key === keyToDelete);
-    if (index === -1) return res.json({ error: "Key nao encontrada" });
-    
-    keys.splice(index, 1);
+    keys = keys.filter(k => k.key !== key);
     await salvarKeys(keys);
-    
-    console.log(`[DELETE] Key deletada: ${keyToDelete}`);
-    res.json({ success: true, deleted: keyToDelete });
+    res.json({ success: true });
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log("========================================");
-    console.log("SERVER RODANDO NA PORTA:", PORT);
-    console.log("========================================");
-});
+app.listen(PORT, () => console.log("Servidor rodando na porta", PORT));
