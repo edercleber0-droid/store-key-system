@@ -50,26 +50,46 @@ app.get("/", (req, res) => {
 
 app.get("/generate", async (req, res) => {
     const tipo = req.query.type || "perm";
+    let keyType = tipo;
+    
     const codigo = Math.random().toString(36).substring(2, 10).toUpperCase();
+    const keyString = `${codigo}`;
+    
     let expires = null;
-    if (tipo === "1d") expires = Date.now() + (24 * 60 * 60 * 1000);
-    else if (tipo === "3d") expires = Date.now() + (72 * 60 * 60 * 1000);
+    if (tipo === "1d") {
+        expires = Date.now() + (24 * 60 * 60 * 1000);
+        keyType = "1d";
+    } else if (tipo === "3d") {
+        expires = Date.now() + (72 * 60 * 60 * 1000);
+        keyType = "3d";
+    } else {
+        keyType = "perm";
+    }
     
     const keys = await buscarKeys();
+    
+    const existe = keys.find(k => k.key === keyString);
+    if (existe) {
+        return res.json({ error: "Key duplicada, tente novamente" });
+    }
+    
     keys.push({
-        key: codigo,
-        tipo: tipo === "1d" ? "1d" : tipo === "3d" ? "3d" : "perm",
+        key: keyString,
+        tipo: keyType,
         expires: expires,
         created_at: Date.now(),
         owner: "Nenhum"
     });
     await salvarKeys(keys);
-    res.json({ key: codigo, tipo: tipo, expires: expires });
+    
+    console.log(`[GERADO] Key: ${keyString}, Tipo: ${keyType}`);
+    res.json({ key: keyString, tipo: keyType, expires: expires });
 });
 
 app.get("/check", async (req, res) => {
     const key = req.query.key;
     
+    // Se for "list", retorna todas as keys
     if (key === "list") {
         const keys = await buscarKeys();
         const agora = Date.now();
@@ -79,6 +99,7 @@ app.get("/check", async (req, res) => {
             expires: k.expires,
             expires_formatado: k.expires ? new Date(k.expires).toLocaleString() : "Nunca",
             status: k.expires && agora > k.expires ? "EXPIRADA" : "ATIVA",
+            created_at: new Date(k.created_at).toLocaleString(),
             owner: k.owner || "Nenhum"
         }));
         return res.json({ total: keysInfo.length, keys: keysInfo });
@@ -87,31 +108,34 @@ app.get("/check", async (req, res) => {
     const keys = await buscarKeys();
     const found = keys.find(k => k.key === key);
     
-    if (!found) return res.json({ valid: false });
-    if (found.expires && Date.now() > found.expires) return res.json({ valid: false, expired: true });
+    if (!found) {
+        console.log(`[CHECK] Key inválida: ${key}`);
+        return res.json({ valid: false });
+    }
     
-    res.json({ valid: true, tipo: found.tipo });
-});
-
-app.get("/use", async (req, res) => {
-    const key = req.query.key;
-    const keys = await buscarKeys();
-    const found = keys.find(k => k.key === key);
+    const agora = Date.now();
+    const expirada = found.expires !== null && agora > found.expires;
     
-    if (!found) return res.json({ success: false, error: "Key inválida" });
-    if (found.expires && Date.now() > found.expires) return res.json({ success: false, error: "Key expirada" });
+    if (expirada) {
+        console.log(`[CHECK] Key expirada: ${key}`);
+        return res.json({ valid: false, expired: true });
+    }
     
+    // 👇 NOVO: Marca a key como "EM USO" automaticamente quando alguém validar
     if (found.owner === "Nenhum") {
         found.owner = "EM USO";
         await salvarKeys(keys);
+        console.log(`[CHECK] Key marcada como EM USO: ${key}`);
     }
     
-    res.json({ success: true });
+    console.log(`[CHECK] Key válida: ${key}, Tipo: ${found.tipo}`);
+    res.json({ valid: true, tipo: found.tipo, expires: found.expires });
 });
 
 app.get("/list", async (req, res) => {
     const keys = await buscarKeys();
     const agora = Date.now();
+    
     const keysInfo = keys.map(k => ({
         key: k.key,
         tipo: k.tipo,
@@ -120,16 +144,29 @@ app.get("/list", async (req, res) => {
         status: k.expires && agora > k.expires ? "EXPIRADA" : "ATIVA",
         owner: k.owner || "Nenhum"
     }));
+    
+    console.log(`[LIST] Total: ${keysInfo.length} keys`);
     res.json({ total: keysInfo.length, keys: keysInfo });
 });
 
 app.get("/delete", async (req, res) => {
-    const key = req.query.key;
+    const keyToDelete = req.query.key;
+    if (!keyToDelete) return res.json({ error: "Informe a key" });
+    
     let keys = await buscarKeys();
-    keys = keys.filter(k => k.key !== key);
+    const index = keys.findIndex(k => k.key === keyToDelete);
+    if (index === -1) return res.json({ error: "Key nao encontrada" });
+    
+    keys.splice(index, 1);
     await salvarKeys(keys);
-    res.json({ success: true });
+    
+    console.log(`[DELETE] Key deletada: ${keyToDelete}`);
+    res.json({ success: true, deleted: keyToDelete });
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Servidor rodando na porta", PORT));
+app.listen(PORT, () => {
+    console.log("========================================");
+    console.log("SERVER RODANDO NA PORTA:", PORT);
+    console.log("========================================");
+});
