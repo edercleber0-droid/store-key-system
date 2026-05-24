@@ -1,3 +1,4 @@
+
 const express = require("express");
 const app = express();
 
@@ -77,7 +78,8 @@ app.get("/generate", async (req, res) => {
         key: keyString,
         tipo: keyType,
         expires: expires,
-        created_at: Date.now()
+        created_at: Date.now(),
+        owner: "Nenhum"
     });
     await salvarKeys(keys);
     
@@ -97,7 +99,7 @@ app.get("/check", async (req, res) => {
             expires: k.expires,
             expires_formatado: k.expires ? new Date(k.expires).toLocaleString() : "Nunca",
             status: k.expires && agora > k.expires ? "EXPIRADA" : "ATIVA",
-            created_at: new Date(k.created_at).toLocaleString()
+            owner: k.owner || "Nenhum"
         }));
         return res.json({ total: keysInfo.length, keys: keysInfo });
     }
@@ -118,6 +120,12 @@ app.get("/check", async (req, res) => {
         return res.json({ valid: false, expired: true });
     }
     
+    // SÓ MARCA COMO "EM USO" SE AINDA ESTIVER "Nenhum"
+    if (found.owner === "Nenhum") {
+        found.owner = "EM USO";
+        await salvarKeys(keys);
+    }
+    
     console.log(`[CHECK] Key válida: ${key}, Tipo: ${found.tipo}`);
     res.json({ valid: true, tipo: found.tipo, expires: found.expires });
 });
@@ -131,10 +139,10 @@ app.get("/list", async (req, res) => {
         tipo: k.tipo,
         expires: k.expires,
         expires_formatado: k.expires ? new Date(k.expires).toLocaleString() : "Nunca",
-        status: k.expires && agora > k.expires ? "EXPIRADA" : "ATIVA"
+        status: k.expires && agora > k.expires ? "EXPIRADA" : "ATIVA",
+        owner: k.owner || "Nenhum"
     }));
     
-    console.log(`[LIST] Total: ${keysInfo.length} keys`);
     res.json({ total: keysInfo.length, keys: keysInfo });
 });
 
@@ -155,7 +163,5 @@ app.get("/delete", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log("========================================");
-    console.log("SERVER RODANDO NA PORTA:", PORT);
-    console.log("========================================");
+    console.log("Servidor rodando na porta", PORT);
 });
