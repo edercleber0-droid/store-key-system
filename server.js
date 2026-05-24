@@ -77,8 +77,7 @@ app.get("/generate", async (req, res) => {
         key: keyString,
         tipo: keyType,
         expires: expires,
-        created_at: Date.now(),
-        owner: "Nenhum"
+        created_at: Date.now()
     });
     await salvarKeys(keys);
     
@@ -89,7 +88,6 @@ app.get("/generate", async (req, res) => {
 app.get("/check", async (req, res) => {
     const key = req.query.key;
     
-    // Se for "list", retorna todas as keys
     if (key === "list") {
         const keys = await buscarKeys();
         const agora = Date.now();
@@ -99,8 +97,7 @@ app.get("/check", async (req, res) => {
             expires: k.expires,
             expires_formatado: k.expires ? new Date(k.expires).toLocaleString() : "Nunca",
             status: k.expires && agora > k.expires ? "EXPIRADA" : "ATIVA",
-            created_at: new Date(k.created_at).toLocaleString(),
-            owner: k.owner || "Nenhum"
+            created_at: new Date(k.created_at).toLocaleString()
         }));
         return res.json({ total: keysInfo.length, keys: keysInfo });
     }
@@ -121,13 +118,6 @@ app.get("/check", async (req, res) => {
         return res.json({ valid: false, expired: true });
     }
     
-    // 👇 NOVO: Marca a key como "EM USO" automaticamente quando alguém validar
-    if (found.owner === "Nenhum") {
-        found.owner = "EM USO";
-        await salvarKeys(keys);
-        console.log(`[CHECK] Key marcada como EM USO: ${key}`);
-    }
-    
     console.log(`[CHECK] Key válida: ${key}, Tipo: ${found.tipo}`);
     res.json({ valid: true, tipo: found.tipo, expires: found.expires });
 });
@@ -141,8 +131,7 @@ app.get("/list", async (req, res) => {
         tipo: k.tipo,
         expires: k.expires,
         expires_formatado: k.expires ? new Date(k.expires).toLocaleString() : "Nunca",
-        status: k.expires && agora > k.expires ? "EXPIRADA" : "ATIVA",
-        owner: k.owner || "Nenhum"
+        status: k.expires && agora > k.expires ? "EXPIRADA" : "ATIVA"
     }));
     
     console.log(`[LIST] Total: ${keysInfo.length} keys`);
