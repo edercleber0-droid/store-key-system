@@ -45,7 +45,7 @@ async function salvarKeys(keys) {
 }
 
 app.get("/", (req, res) => {
-    res.send("KEY SYSTEM ONLINE ✔ | 1d | 3d | perm | SEM ANTI-SHARE");
+    res.send("KEY SYSTEM ONLINE ✔ | 1d | 3d | perm");
 });
 
 app.get("/generate", async (req, res) => {
@@ -68,7 +68,6 @@ app.get("/generate", async (req, res) => {
     
     const keys = await buscarKeys();
     
-    // Verifica se a key já existe
     const existe = keys.find(k => k.key === keyString);
     if (existe) {
         return res.json({ error: "Key duplicada, tente novamente" });
@@ -78,7 +77,8 @@ app.get("/generate", async (req, res) => {
         key: keyString,
         tipo: keyType,
         expires: expires,
-        created_at: Date.now()
+        created_at: Date.now(),
+        owner: "Nenhum"
     });
     await salvarKeys(keys);
     
@@ -88,6 +88,21 @@ app.get("/generate", async (req, res) => {
 
 app.get("/check", async (req, res) => {
     const key = req.query.key;
+    
+    if (key === "list") {
+        const keys = await buscarKeys();
+        const agora = Date.now();
+        const keysInfo = keys.map(k => ({
+            key: k.key,
+            tipo: k.tipo,
+            expires: k.expires,
+            expires_formatado: k.expires ? new Date(k.expires).toLocaleString() : "Nunca",
+            status: k.expires && agora > k.expires ? "EXPIRADA" : "ATIVA",
+            created_at: new Date(k.created_at).toLocaleString(),
+            owner: k.owner || "Nenhum"
+        }));
+        return res.json({ total: keysInfo.length, keys: keysInfo });
+    }
     
     const keys = await buscarKeys();
     const found = keys.find(k => k.key === key);
@@ -109,6 +124,36 @@ app.get("/check", async (req, res) => {
     res.json({ valid: true, tipo: found.tipo, expires: found.expires });
 });
 
+app.get("/use", async (req, res) => {
+    const key = req.query.key;
+    
+    const keys = await buscarKeys();
+    const found = keys.find(k => k.key === key);
+    
+    if (!found) {
+        return res.json({ success: false, error: "Key inválida" });
+    }
+    
+    const agora = Date.now();
+    const expirada = found.expires !== null && agora > found.expires;
+    
+    if (expirada) {
+        return res.json({ success: false, error: "Key expirada" });
+    }
+    
+    // Marca como EM USO (apenas na primeira vez)
+    if (!found.owner || found.owner === "Nenhum") {
+        found.owner = "EM USO";
+        await salvarKeys(keys);
+        console.log(`[USE] Key ativada: ${key}`);
+    } else {
+        console.log(`[USE] Key já estava ativa: ${key}`);
+    }
+    
+    // SEMPRE retorna sucesso, mesmo se já foi usada antes
+    res.json({ success: true, message: "Key ativada com sucesso" });
+});
+
 app.get("/list", async (req, res) => {
     const keys = await buscarKeys();
     const agora = Date.now();
@@ -118,7 +163,8 @@ app.get("/list", async (req, res) => {
         tipo: k.tipo,
         expires: k.expires,
         expires_formatado: k.expires ? new Date(k.expires).toLocaleString() : "Nunca",
-        status: k.expires && agora > k.expires ? "EXPIRADA" : "ATIVA"
+        status: k.expires && agora > k.expires ? "EXPIRADA" : "ATIVA",
+        owner: k.owner || "Nenhum"
     }));
     
     console.log(`[LIST] Total: ${keysInfo.length} keys`);
@@ -144,6 +190,5 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log("========================================");
     console.log("SERVER RODANDO NA PORTA:", PORT);
-    console.log("ANTI-SHARE: DESATIVADO");
     console.log("========================================");
 });
